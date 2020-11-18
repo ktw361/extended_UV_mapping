@@ -1,51 +1,115 @@
-import os
-import os.path as osp
-from types import SimpleNamespace
+import PIL.Image as Image
+import PIL.ImageDraw as ImageDraw
 
 import numpy as np
-import json
-import mmcv
 
 
-class Side(object):
+"""
+      4 +-----------------+ 5
+       /     TOP         /|
+      /                 / |
+   0 +-----------------+ 1|
+     |      FRONT      |  |
+     |                 |  |
+     |  x <--+         |  |
+     |       |         |  |
+     |       v         |  + 6
+     |        y        | /
+     |                 |/
+   3 +-----------------+ 2
+
+"""
+
+
+def draw_proj_cuboid_image(image: Image,
+                           proj_cuboid: np.ndarray,
+                           color='green',
+                           thickness=4):
     """
-    A Side is a set of images of 'depth' 'image' 'seg'
-    and object annotations.
+    TODO consider different colors for different sides?
+    :param proj_cuboid: [8, 2] in absolute
     """
-    def __init__(self, base, ind, which):
-        num = '%06d' % ind
-        num = '.'.join([num, which])
-        self.num = num
-
-        num = osp.join(base, num)
-        depth = '.'.join([num, 'depth.png'])
-        img = '.'.join([num, 'jpg'])
-        json_file = '.'.join([num, 'json'])
-        seg = '.'.join([num, 'seg.png'])
-
-        self.depth = mmcv.imread(depth)
-        self.img = mmcv.imread(img)
-        self.seg = mmcv.imread(seg)
-        with open(json_file) as fp:
-            self.json = json.load(
-                fp, object_hook=lambda d: SimpleNamespace(**d))
-        with open(json_file) as fp:
-            self.json_obj = json.load(fp)
-
-    def __repr__(self):
-        l2 = '\tdepth: %s' % str(self.depth.shape)
-        l3 = '\tseg: %s' % str(self.seg.shape)
-        r = str(self.num) + ':\n' + '\t' + str(self.img.shape) + '\n' + l2 + '\n' + l3
-        return r
+    draw = ImageDraw.Draw(image)
+    points = [(proj_cuboid[i][0], proj_cuboid[i][1]) for i in range(8)]
+    # Front
+    lines = [
+        points[0], points[1], points[2], points[3], points[0]
+    ]
+    draw.line(lines, width=thickness, fill=color)
+    # Rear
+    lines = [
+        points[4], points[5], points[6], points[7], points[4]
+    ]
+    draw.line(lines, width=thickness, fill=color)
+    # # (0, 4), (1, 5), (2, 6), (3, 7)
+    draw.line([points[0], points[4]])
+    draw.line([points[1], points[5]])
+    draw.line([points[2], points[6]])
+    draw.line([points[3], points[7]])
 
 
-class Scene(object):
-    """ Stores both left & right Sides.
+def draw_box2d_image(image: Image,
+                     bnd_box: np.ndarray,
+                     color='green',
+                     thickness=4):
     """
-    def __init__(self, base, ind):
-        self.left = Side(base, ind, 'left')
-        self.right = Side(base, ind, 'right')
 
-    def __repr__(self):
-        return '{\n' + repr(self.left) + '\n\n' + repr(self.right) + '\n}'
+    :param bnd_box: [y1, x1, y2, x2] in absolute
+    """
+    draw = ImageDraw.Draw(image)
+    top, left, bottom, right = bnd_box
+    draw.line([(left, top), (right, top),
+               (right, bottom), (left, bottom), (left, top)],
+              width=thickness, fill=color)
 
+
+def draw_line_image(image: Image,
+                    line: np.ndarray,
+                    color='green',
+                    thickness=4):
+    """
+
+    Args:
+        image:
+        line: [ [x_min, y_min], [x_max, y_max] ]
+        color:
+        thickness:
+
+    Returns:
+
+    """
+    draw = ImageDraw.Draw(image)
+    left, top = line[0]
+    right, bottom = line[1]
+    draw.line([(left, top), (right, bottom)],
+              width=thickness, fill=color)
+
+
+def draw_pivots_image(image: Image,
+                      pivots: np.ndarray,
+                      thickness=4):
+    """
+    draw pivots with X-Red, Y-Green, Z-Blue
+
+    Args:
+        image:
+        pivots: [ [h_start, v_start],
+                  [X_h, X_v],
+                  [Y_h, Y_v],
+                  [Z_h, Z_v] ] , h(horizontal), v(vertical)
+        thickness:
+
+    Returns: modify in place
+    """
+    draw = ImageDraw.Draw(image)
+    h, v = pivots[0]
+    x_h, x_v = pivots[1]
+    y_h, y_v = pivots[2]
+    z_h, z_v = pivots[3]
+
+    draw.line([(h, v), (x_h, x_v)],
+              width=thickness, fill='red')
+    draw.line([(h, v), (y_h, y_v)],
+              width=thickness, fill='green')
+    draw.line([(h, v), (z_h, z_v)],
+              width=thickness, fill='blue')

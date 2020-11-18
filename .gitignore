@@ -1,3 +1,7 @@
 __pycache__/
 .idea/
 .ipynb_checkpoints/
+
+*.pkl
+fat/
+fat
