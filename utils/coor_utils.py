@@ -25,6 +25,24 @@ def from_home_nx(pts):
     return from_home_xn(pts.T).T
 
 
+def normalize_homo_xn(x_h):
+    return x_h / x_h[-1, :]
+
+
+def normalize_homo_nx(x_h):
+    return x_h / x_h[:, -1]
+
+
+def normalize_and_drop_homo_xn(x_h):
+    """ x_h: (c, n) -> (c-1, n) """
+    return x_h[:-1, :] / x_h[-1, :]
+
+
+def normalize_and_drop_homo_nx(x_h):
+    """ x_h: (n, c) -> (n, c-1) """
+    return normalize_and_drop_homo_xn(x_h.T).T
+
+
 def transform_nx3(transform_matrix, x):
     """
 
@@ -138,12 +156,11 @@ def project_3d_2d(A, Xcam):
 
 def extract_pixel_homo_xn(x2d_h):
     """ x2d_h: [3, n] -> [2, n] """
-    x2d = x2d_h / x2d_h[-1, :]
-    return from_home_xn(x2d)
+    return normalize_and_drop_homo_xn(x2d_h)
 
 
 def extract_pixel_homo_nx(x2d_h):
     """ x2d_h: [n, 3] -> [n, 2] """
-    return extract_pixel_homo_xn(x2d_h.T).T
+    return normalize_and_drop_homo_nx(x2d_h.T).T
 
 

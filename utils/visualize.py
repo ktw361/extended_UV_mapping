@@ -21,14 +21,28 @@ import numpy as np
 """
 
 
-def draw_proj_cuboid_image(image: Image,
+def draw_proj_cuboid_image(image,
                            proj_cuboid: np.ndarray,
                            color='green',
                            thickness=4):
     """
     TODO consider different colors for different sides?
-    :param proj_cuboid: [8, 2] in absolute
+
+    Args:
+        image: PIL.Image.Image or (h, w, 3) ndarray
+        proj_cuboid: [8, 2] in absolute
+        color:
+        thickness:
+
+    Returns: draw in place
+
     """
+    if isinstance(image, Image.Image):
+        pass
+    elif isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    else:
+        raise ValueError(f"Data `image` with type {type(image)} not understood.")
     draw = ImageDraw.Draw(image)
     points = [(proj_cuboid[i][0], proj_cuboid[i][1]) for i in range(8)]
     # Front
@@ -48,14 +62,27 @@ def draw_proj_cuboid_image(image: Image,
     draw.line([points[3], points[7]])
 
 
-def draw_box2d_image(image: Image,
+def draw_box2d_image(image,
                      bnd_box: np.ndarray,
                      color='green',
                      thickness=4):
     """
 
-    :param bnd_box: [y1, x1, y2, x2] in absolute
+    Args:
+        image: PIL.Image.Image or (h, w, 3) ndarray
+        bnd_box: [y1, x1, y2, x2] in absolute
+        color:
+        thickness:
+
+    Returns: draw in place
+
     """
+    if isinstance(image, Image.Image):
+        pass
+    elif isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    else:
+        raise ValueError(f"Data `image` with type {type(image)} not understood.")
     draw = ImageDraw.Draw(image)
     top, left, bottom, right = bnd_box
     draw.line([(left, top), (right, top),
@@ -63,7 +90,7 @@ def draw_box2d_image(image: Image,
               width=thickness, fill=color)
 
 
-def draw_line_image(image: Image,
+def draw_line_image(image,
                     line: np.ndarray,
                     color='green',
                     thickness=4):
@@ -78,6 +105,12 @@ def draw_line_image(image: Image,
     Returns:
 
     """
+    if isinstance(image, Image.Image):
+        pass
+    elif isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    else:
+        raise ValueError(f"Data `image` with type {type(image)} not understood.")
     draw = ImageDraw.Draw(image)
     left, top = line[0]
     right, bottom = line[1]
@@ -85,7 +118,7 @@ def draw_line_image(image: Image,
               width=thickness, fill=color)
 
 
-def draw_pivots_image(image: Image,
+def draw_pivots_image(image,
                       pivots: np.ndarray,
                       thickness=4):
     """
@@ -101,7 +134,14 @@ def draw_pivots_image(image: Image,
 
     Returns: modify in place
     """
+    if isinstance(image, Image.Image):
+        pass
+    elif isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    else:
+        raise ValueError(f"Data `image` with type {type(image)} not understood.")
     draw = ImageDraw.Draw(image)
+
     h, v = pivots[0]
     x_h, x_v = pivots[1]
     y_h, y_v = pivots[2]

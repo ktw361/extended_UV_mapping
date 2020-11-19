@@ -2,14 +2,18 @@ import os.path as osp
 import json
 from types import SimpleNamespace
 import numpy as np
+import warnings
 
+from PIL import Image
 from scipy.spatial.transform import Rotation as R
 
-from utils import coor_utils
+from utils import coor_utils, visualize
+from utils import data as datalib
 import mmcv
 
 
 class Side(object):
+    # TODO: add `mixed` support
     """
     A Side is a set of images of 'depth' 'image' 'seg'
     and object annotations.
@@ -68,41 +72,102 @@ class Side(object):
             '\n' + l2 + '\n' + l3
         return r
 
-    def _setup_intrinsic_and_projection(self, cam_params):
-        """
-        In NVDU(OpenGL), only the projection matrix is used.
-        """
+    @property
+    def intrinsic_matrix(self):
+        """ In NVDU(OpenGL), only the projection matrix is used. """
+        warnings.warn("This property is used in NVDU.")
+        return self._intrinsic_matrix
 
+    @property
+    def projection_matrix(self):
+        return self._projection_matrix
+
+    def _setup_intrinsic_and_projection(self, cam_params):
         self.cap_width = cam_params['captured_image_size']['width']
         self.cap_height = cam_params['captured_image_size']['height']
 
         intrinsics = cam_params['intrinsic_settings']
-        fx, fy = intrinsics['fx'], intrinsics['fy']
-        cx, cy = intrinsics['cx'], intrinsics['cy']
+        self.fx, self.fy = intrinsics['fx'], intrinsics['fy']
+        self.cx, self.cy = intrinsics['cx'], intrinsics['cy']
         s = intrinsics['s']
-        self.intrinsic_matrix = np.float32([
-            [fx, s, cx],
-            [0, fy, cy],
-            [0,  0,  1],
+        self._intrinsic_matrix = np.float32([
+            [self.fx, s, self.cx],
+            [0, self.fy, self.cy],
+            [0,       0,       1],
         ])  # (3, 3)
 
         # Calculate projection_matrix
         zfar = 1.0
         znear = 1.0
         zdiff = float(zfar - znear)
-        a = (2.0 * fx) / float(self.cap_width)
-        b = (2.0 * fy) / float(self.cap_height)
+        a = (2.0 * self.fx) / float(self.cap_width)
+        b = (2.0 * self.fy) / float(self.cap_height)
         c = -znear / zdiff if (zdiff > 0) else 0
         d = (znear * zfar) / zdiff if (zdiff > 0) else (-znear)
-        c1 = 1.0 - (2.0 * cx) / self.cap_width
-        c2 = (2.0 * cy) / self.cap_height - 1.0
+        c1 = 1.0 - (2.0 * self.cx) / self.cap_width
+        c2 = (2.0 * self.cy) / self.cap_height - 1.0
 
-        self.projection_matrix = np.float32([
+        self._projection_matrix = np.float32([
             [a, 0, 0, 0],
             [0, b, 0, 0],
             [c1, c2, c, d],
             [0, 0, -1.0, 0]
         ])
+
+        # The followings are used in transform_point_clouds()
+        self._M_intrinsic = np.float32([
+            [self.fx, 0, 0, 0],
+            [0, self.fy, 0, 0],
+            [0, 0, -1, 0],
+        ])  # 3x4
+        self._M_ndc2win_then_flip = np.float32([
+            [-1, 0, self.cap_width/2],
+            [0, -1, self.cap_height/2],
+            [0, 0, 1],
+        ])
+
+    def transform_point_cloud_with_transl_and_quat(self,
+                                                   pts,
+                                                   quat,
+                                                   transl):
+        """ Mimic OpenGL's 3D to 2D mapping using supplied translation and quaternion
+        P_2d = flip() @ NDC2WIN() @ perspective_division
+                 @ projection_matrix @ Tmw @ P_3d
+
+            where Tmw is directly computed from (quat, transl)
+
+        Args:
+            pts: (n, 3) of (x, y, z)
+            quat: (4, )
+            transl: (3, )
+
+        Returns: (n, 2) of (x, y)
+        """
+        rot = R.from_quat(quat).as_matrix()
+        Tmw = coor_utils.concat_rot_transl_4x4(rot, transl)  # T_model->world, confront OpenGL's
+
+        pts_h = coor_utils.to_homo_nx(pts).T  # pts_h: (3, n)
+        M_transformations = self._M_intrinsic @ Tmw
+        pts_h = M_transformations @ pts_h
+        pts_h = coor_utils.normalize_homo_xn(pts_h)
+        pts_h = self._M_ndc2win_then_flip @ pts_h
+
+        pts_2d = coor_utils.from_home_xn(pts_h).transpose()  # (3,n) -> (n,2)
+
+        return pts_2d
+
+    def transform_point_cloud(self, pts, ind):
+        """
+
+        Args:
+            pts: (n, 3)
+            ind: index into self.objects
+
+        Returns: (n, 2)
+        """
+        quat = self.get_params_from_key('quaternion_xyzw')[ind]
+        transl = self.get_params_from_key('location')[ind]
+        return self.transform_point_cloud_with_transl_and_quat(pts, quat, transl)
 
     @property
     def objects(self):
@@ -149,6 +214,7 @@ class Side(object):
         Returns: T_camera->world, (4, 4)
 
         """
+        warnings.warn("This property is used in NVDU.")
         loc = np.float32(
             self.json_obj['camera_data']['location_worldframe'])
         quat = np.float32(
@@ -159,10 +225,84 @@ class Side(object):
 
     @property
     def fixed_model_transform_list(self):
+        """ If using `ycb_models_nvdu_aligned_cm`, then this one is not used. """
         ret = []
         for exp_obj in self.object_settings['exported_objects']:
             ret.append(np.float32(exp_obj['fixed_model_transform']))
         return ret
+
+    def visualize_object(self,
+                         ind,
+                         model_root,
+                         show_pivots=True,
+                         show_cuboids=True,
+                         show_projected_pcd=True,
+                         color_array=(255, 0, 255)):
+        """
+
+        Args:
+            ind: index into self.objects
+            model_root: /<model_root>/<model_name>/google_512k/textured.obj'
+                        example <model_name> like '037_scissors'
+            show_pivots: bool, show transformed pivots axis
+            show_cuboids: bool, show projected cuboids
+            show_projected_pcd: bool, draw colored projected point cloud
+                                onto the object
+            color_array: tuple, default pink
+
+        Returns: annotated ndarray (h, w, 3)
+
+        """
+        width, height, depth = self.object_settings['exported_objects'][ind]['cuboid_dimensions']
+        pivots = np.float32([
+            [0, 0, 0],       # center
+            [height, 0, 0],  # X-axis
+            [0, width, 0],   # Y-axis
+            [0, 0, depth]
+        ])
+
+        # Get cuboids in 3D
+        cx, cy, cz = 0, 0, 0
+        right = cx + width / 2.0  # X axis point to the right
+        _left = cx - width / 2.0
+        top = cy + height / 2.0  # Y axis point upward
+        bottom = cy + height / 2.0
+        front = cz - depth / 2.0  # Z axis point inward
+        rear = cz + depth / 2.0
+        # List of 8 vertices of the box
+        cuboid = np.float32([
+            [_left, top, front],  # Front Top Left
+            [right, top, front],  # Front Top Right
+            [right, bottom, front],  # Front Bottom Right
+            [_left, bottom, front],  # Front Bottom Left
+            [_left, top, rear],  # Rear Top Left
+            [right, top, rear],  # Rear Top Right
+            [right, bottom, rear],  # Rear Bottom Right
+            [_left, bottom, rear],  # Rear Bottom Left
+        ])
+
+        # Get model point cloud
+        # The '006_mustart_bottle' is UPPER CASE 16K, others' are 16k?
+        model_name = self.objects[0]['class'].replace('_16k', '').replace('_16K', '')
+        model_pcd = datalib.load_obj(
+            osp.join(model_root, model_name, 'google_512k/textured.obj'))
+
+        # Visualize
+        _img = self.img.copy()
+        if show_pivots:
+            pivots_2d = self.transform_point_cloud(pivots, ind)
+            visualize.draw_pivots_image(_img, pivots_2d)
+        if show_cuboids:
+            cuboid_2d = self.transform_point_cloud(cuboid, ind)
+            visualize.draw_proj_cuboid_image(_img, cuboid_2d)
+        if show_projected_pcd:
+            pcd_2d = self.transform_point_cloud(model_pcd, ind)
+            pcd_ind = np.floor(pcd_2d).astype(int)
+            y_ind = np.clip(pcd_ind[:, 1], 0, self.cap_height-1)
+            x_ind = np.clip(pcd_ind[:, 0], 0, self.cap_width-1)
+            _img[y_ind, x_ind, :] = color_array
+
+        return _img
 
 
 class Scene(object):

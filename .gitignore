@@ -2,6 +2,8 @@ __pycache__/
 .idea/
 .ipynb_checkpoints/
 
+unused/
+
 *.pkl
 fat/
 fat
