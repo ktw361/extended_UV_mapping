@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import numpy as np
 import warnings
 
-from PIL import Image
 from scipy.spatial.transform import Rotation as R
 
 from utils import coor_utils, visualize
@@ -72,16 +71,6 @@ class Side(object):
             '\n' + l2 + '\n' + l3
         return r
 
-    @property
-    def intrinsic_matrix(self):
-        """ In NVDU(OpenGL), only the projection matrix is used. """
-        warnings.warn("This property is used in NVDU.")
-        return self._intrinsic_matrix
-
-    @property
-    def projection_matrix(self):
-        return self._projection_matrix
-
     def _setup_intrinsic_and_projection(self, cam_params):
         self.cap_width = cam_params['captured_image_size']['width']
         self.cap_height = cam_params['captured_image_size']['height']
@@ -125,6 +114,16 @@ class Side(object):
             [0, -1, self.cap_height/2],
             [0, 0, 1],
         ])
+
+    @property
+    def intrinsic_matrix(self):
+        """ In NVDU(OpenGL), only the projection matrix is used. """
+        warnings.warn("This property is used in NVDU.")
+        return self._intrinsic_matrix
+
+    @property
+    def projection_matrix(self):
+        return self._projection_matrix
 
     def transform_point_cloud_with_transl_and_quat(self,
                                                    pts,
@@ -177,6 +176,20 @@ class Side(object):
 
         """
         return self.json_obj['objects']
+
+    @property
+    def Tmw_list(self):
+        """ Rigid Transformation from model to world
+
+        Returns: list of 4x4 [R|t]
+
+        """
+        quat_list = self.get_params_from_key('quaternion_xyzw')
+        transls_list = self.get_params_from_key('location')
+        rot_list = [R.from_quat(q).as_matrix() for q in quat_list]
+        Tmw_list = [coor_utils.concat_rot_transl_4x4(r, t)
+                    for (r, t) in zip(rot_list, transls_list)]
+        return Tmw_list
 
     def get_params_from_key(self, key):
         """

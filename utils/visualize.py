@@ -153,3 +153,30 @@ def draw_pivots_image(image,
               width=thickness, fill='green')
     draw.line([(h, v), (z_h, z_v)],
               width=thickness, fill='blue')
+
+
+def draw_big_dots_image(image,
+                        dots: np.ndarray,
+                        color='green',
+                        thickness=4):
+    """
+
+    Args:
+        image:
+        dots: (n, 2)
+        color:
+        thickness: radius equals 2 * thickness
+
+    Returns:
+
+    """
+    if isinstance(image, Image.Image):
+        pass
+    elif isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    else:
+        raise ValueError(f"Data `image` with type {type(image)} not understood.")
+    draw = ImageDraw.Draw(image)
+    r = 2 * thickness
+    for (x, y) in dots:
+        draw.ellipse((x-r, y-r, x+r, y+r), fill=color)
