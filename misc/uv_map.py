@@ -69,7 +69,7 @@ def draw_uv_map_image(pts,
     h, w, _ = img.shape
     u_map, v_map = generate_uv_map(pts, method, bins=bins, to_256=True)
     _img = img.copy()
-    uv = np.column_stack([u_map, v_map, np.ones_like(u_map)])
+    uv = np.column_stack([u_map, v_map, np.zeros_like(u_map)])
     y_ind = np.clip(pts_ind[:, 1], 0, h-1)
     x_ind = np.clip(pts_ind[:, 0], 0, w-1)
     _img[y_ind, x_ind, :] = uv
@@ -153,7 +153,7 @@ def generate_nocs_map(pts,
                             `pts` is smaller than largest diagonal of `cuboid`
 
 
-    Returns: (n, 3) of NOCS Map in [0, 1]
+    Returns: (n, 3) float, NOCS Map in [0, 1]
 
     """
     cuboid_dist_mat = euclidean_distances(cuboid, cuboid)

@@ -128,7 +128,8 @@ class Side(object):
     def transform_point_cloud_with_transl_and_quat(self,
                                                    pts,
                                                    quat,
-                                                   transl):
+                                                   transl,
+                                                   sort_by_depth=False):
         """ Mimic OpenGL's 3D to 2D mapping using supplied translation and quaternion
         P_2d = flip() @ NDC2WIN() @ perspective_division
                  @ projection_matrix @ Tmw @ P_3d
@@ -139,6 +140,10 @@ class Side(object):
             pts: (n, 3) of (x, y, z)
             quat: (4, )
             transl: (3, )
+            sort_by_depth: bool, sort pts_2d by abs(depth), far away (from screen) points
+                comes first, while closer points comes latter,
+                which can overwrite far away points during numpy assignment.
+                This is useful for displaying 2D points in correct order.
 
         Returns: (n, 2) of (x, y)
         """
@@ -148,6 +153,9 @@ class Side(object):
         pts_h = coor_utils.to_homo_nx(pts).T  # pts_h: (3, n)
         M_transformations = self._M_intrinsic @ Tmw
         pts_h = M_transformations @ pts_h
+        if sort_by_depth:
+            sorted_ind = np.argsort(abs(pts_h[-1, :]))[::-1]
+            pts_h = pts_h[:, sorted_ind]
         pts_h = coor_utils.normalize_homo_xn(pts_h)
         pts_h = self._M_ndc2win_then_flip @ pts_h
 
@@ -155,18 +163,20 @@ class Side(object):
 
         return pts_2d
 
-    def transform_point_cloud(self, pts, ind):
+    def transform_point_cloud(self, pts, ind, sort_by_depth=False):
         """
 
         Args:
             pts: (n, 3)
             ind: index into self.objects
+            sort_by_depth: bool, see transform_point_cloud_with_transl_and_quat()
 
         Returns: (n, 2)
         """
         quat = self.get_params_from_key('quaternion_xyzw')[ind]
         transl = self.get_params_from_key('location')[ind]
-        return self.transform_point_cloud_with_transl_and_quat(pts, quat, transl)
+        return self.transform_point_cloud_with_transl_and_quat(
+            pts, quat, transl, sort_by_depth=sort_by_depth)
 
     @property
     def objects(self):
@@ -303,13 +313,13 @@ class Side(object):
         # Visualize
         _img = self.img.copy()
         if show_pivots:
-            pivots_2d = self.transform_point_cloud(pivots, ind)
+            pivots_2d = self.transform_point_cloud(pivots, ind, sort_by_depth=True)
             visualize.draw_pivots_image(_img, pivots_2d)
         if show_cuboids:
-            cuboid_2d = self.transform_point_cloud(cuboid, ind)
+            cuboid_2d = self.transform_point_cloud(cuboid, ind, sort_by_depth=True)
             visualize.draw_proj_cuboid_image(_img, cuboid_2d)
         if show_projected_pcd:
-            pcd_2d = self.transform_point_cloud(model_pcd, ind)
+            pcd_2d = self.transform_point_cloud(model_pcd, ind, sort_by_depth=True)
             pcd_ind = np.floor(pcd_2d).astype(int)
             y_ind = np.clip(pcd_ind[:, 1], 0, self.cap_height-1)
             x_ind = np.clip(pcd_ind[:, 0], 0, self.cap_width-1)
