@@ -107,11 +107,11 @@ class Side(object):
         self._M_intrinsic = np.float32([
             [self.fx, 0, 0, 0],
             [0, self.fy, 0, 0],
-            [0, 0, -1, 0],
+            [0, 0, 1, 0],
         ])  # 3x4
         self._M_ndc2win_then_flip = np.float32([
-            [-1, 0, self.cap_width/2],
-            [0, -1, self.cap_height/2],
+            [1, 0, self.cap_width/2],
+            [0, 1, self.cap_height/2],
             [0, 0, 1],
         ])
 
@@ -129,7 +129,7 @@ class Side(object):
                                                    pts,
                                                    quat,
                                                    transl,
-                                                   sort_by_depth=False):
+                                                   store_dict=None):
         """ Mimic OpenGL's 3D to 2D mapping using supplied translation and quaternion
         P_2d = flip() @ NDC2WIN() @ perspective_division
                  @ projection_matrix @ Tmw @ P_3d
@@ -140,21 +140,27 @@ class Side(object):
             pts: (n, 3) of (x, y, z)
             quat: (4, )
             transl: (3, )
-            sort_by_depth: bool, sort pts_2d by abs(depth), far away (from screen) points
+            store_dict: None or a dict,
+                if a dict is passed in, and has key 'depth_sorted_ind',
+                The function will sort pts_2d by abs(depth), far away (from screen) points
                 comes first, while closer points comes latter,
                 which can overwrite far away points during numpy assignment.
                 This is useful for displaying 2D points in correct order.
+                store_dict['depth_sorted_ind'] will be overwritten to be sorted indexes.
 
-        Returns: (n, 2) of (x, y)
+        Returns: (n, 2) of [x, y]
         """
+        DEPTH_SORTED_IND = 'depth_sorted_ind'
+
         rot = R.from_quat(quat).as_matrix()
         Tmw = coor_utils.concat_rot_transl_4x4(rot, transl)  # T_model->world, confront OpenGL's
 
         pts_h = coor_utils.to_homo_nx(pts).T  # pts_h: (3, n)
         M_transformations = self._M_intrinsic @ Tmw
         pts_h = M_transformations @ pts_h
-        if sort_by_depth:
+        if isinstance(store_dict, dict) and DEPTH_SORTED_IND in store_dict:
             sorted_ind = np.argsort(abs(pts_h[-1, :]))[::-1]
+            store_dict[DEPTH_SORTED_IND] = sorted_ind
             pts_h = pts_h[:, sorted_ind]
         pts_h = coor_utils.normalize_homo_xn(pts_h)
         pts_h = self._M_ndc2win_then_flip @ pts_h
@@ -163,20 +169,20 @@ class Side(object):
 
         return pts_2d
 
-    def transform_point_cloud(self, pts, ind, sort_by_depth=False):
+    def transform_point_cloud(self, pts, ind, store_dict=None):
         """
 
         Args:
             pts: (n, 3)
             ind: index into self.objects
-            sort_by_depth: bool, see transform_point_cloud_with_transl_and_quat()
+            store_dict: None or dict, see transform_point_cloud_with_transl_and_quat()
 
         Returns: (n, 2)
         """
         quat = self.get_params_from_key('quaternion_xyzw')[ind]
         transl = self.get_params_from_key('location')[ind]
         return self.transform_point_cloud_with_transl_and_quat(
-            pts, quat, transl, sort_by_depth=sort_by_depth)
+            pts, quat, transl, store_dict=store_dict)
 
     @property
     def objects(self):
@@ -188,8 +194,29 @@ class Side(object):
         return self.json_obj['objects']
 
     @property
+    def class_list(self):
+        """ Replace the _16k/_16K suffixes and returns the list
+
+        Returns: list of str
+
+        """
+        return [v.replace('_16k', '').replace('_16K', '')
+                for v in self.get_params_from_key('class')]
+
+    @property
+    def visibility_list(self):
+        """
+
+        Returns: list of float
+
+        """
+        return np.float32(self.get_params_from_key('visibility'))
+
+    @property
     def Tmw_list(self):
-        """ Rigid Transformation from model to world
+        """ Rigid Transformation from model to world,
+        the dataset generate the quaternions and translations
+        using OpenCV's convention.
 
         Returns: list of 4x4 [R|t]
 
@@ -312,14 +339,15 @@ class Side(object):
 
         # Visualize
         _img = self.img.copy()
+        store_dict = dict(depth_sorted_ind=None)
         if show_pivots:
-            pivots_2d = self.transform_point_cloud(pivots, ind, sort_by_depth=True)
+            pivots_2d = self.transform_point_cloud(pivots, ind, store_dict=store_dict)
             visualize.draw_pivots_image(_img, pivots_2d)
         if show_cuboids:
-            cuboid_2d = self.transform_point_cloud(cuboid, ind, sort_by_depth=True)
+            cuboid_2d = self.transform_point_cloud(cuboid, ind, store_dict=store_dict)
             visualize.draw_proj_cuboid_image(_img, cuboid_2d)
         if show_projected_pcd:
-            pcd_2d = self.transform_point_cloud(model_pcd, ind, sort_by_depth=True)
+            pcd_2d = self.transform_point_cloud(model_pcd, ind, store_dict=store_dict)
             pcd_ind = np.floor(pcd_2d).astype(int)
             y_ind = np.clip(pcd_ind[:, 1], 0, self.cap_height-1)
             x_ind = np.clip(pcd_ind[:, 0], 0, self.cap_width-1)

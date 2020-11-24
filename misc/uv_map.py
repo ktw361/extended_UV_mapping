@@ -3,12 +3,14 @@ from sklearn.metrics.pairwise import euclidean_distances
 import open3d as o3d
 
 from . import fragment
+from utils.class_names import fat_name2segid
+from utils import data as datalib
 
 """ Functions of surface mapping. """
 
 
 def generate_uv_map(pts,
-                    method,
+                    method='s',
                     bins=256,
                     to_256=False):
     """ Generate two-channel UV Mapping
@@ -51,33 +53,72 @@ def generate_uv_map(pts,
 def draw_uv_map_image(pts,
                       pts_ind,
                       img,
-                      method,
+                      mask_config=None,
+                      method='s',
                       bins=256):
-    """ Draw UV Map (2 channels) as RGB image.
+    """ Draw one object's UV Map (2 channels) as RGB image.
     color using (U, V, 0)
 
     Args:
         pts: (n, 3)
         pts_ind: (n, 2) int coordinate into img
         img: (h, w, 3) ndarray
+        mask_config: None or tuple of (mask, segid),
+            where mask is a (h, w, 3) ndarray,
+            and segid is a int indicating the masked region.
+            For single object, segid == 255;
+            for multiple objects, segid == (class_index+1) * 12, see class_names.py
         method: see generate_uv_map()
         bins: see generate_uv_map()
 
-    Returns: (h, w, 3) img
+    Returns: (h, w, 3) array
 
     """
     h, w, _ = img.shape
-    u_map, v_map = generate_uv_map(pts, method, bins=bins, to_256=True)
+    u_map, v_map = generate_uv_map(pts, method=method, bins=bins, to_256=True)
     _img = img.copy()
     uv = np.column_stack([u_map, v_map, np.zeros_like(u_map)])
     y_ind = np.clip(pts_ind[:, 1], 0, h-1)
     x_ind = np.clip(pts_ind[:, 0], 0, w-1)
     _img[y_ind, x_ind, :] = uv
+    if mask_config is not None and isinstance(mask_config, tuple):
+        mask, segid = mask_config
+        if isinstance(mask, np.ndarray):
+            _img[mask != segid] = img[mask != segid]
+    return _img
+
+
+def draw_uv_map_side(side, model_root, method='s', bins=256):
+    """ Draw UV Map onto the RGB image of the Side class.
+
+    Args:
+        side: a Side class
+        model_root: str, will be used to retrieve original 3d point cloud model
+            using "/<model_root>/011_banana/google_512k/textured.obj"
+        method: 's' or 'c'
+        bins: int, default 256
+
+    Returns: (h, w, 3) ndarray
+
+    """
+    _img = side.img
+    for i, class_name in enumerate(side.class_list):
+        model_path = f"{model_root}/{class_name}/google_512k/textured.obj"
+        pts = datalib.load_obj(model_path)
+        segid = fat_name2segid[class_name]
+
+        store_dict = dict(depth_sorted_ind=None)
+        pts_ind = side.transform_point_cloud(
+            pts, ind=i, store_dict=store_dict).astype(int)
+        pts_sorted = pts[store_dict['depth_sorted_ind']]
+        _img = draw_uv_map_image(pts_sorted, pts_ind, _img,
+                                 mask_config=(side.seg, segid),
+                                 method=method, bins=bins)
     return _img
 
 
 def generate_uv_frag_map(pts,
-                         method,
+                         method='s',
                          uv_bins=256,
                          frag_bins=8,
                          to_256=False):
@@ -106,7 +147,7 @@ def generate_uv_frag_map(pts,
 
 
 def create_visualization_uvf_point_cloud(pts,
-                                         method,
+                                         method='s',
                                          uv_bins=256,
                                          frag_bins=8):
     """ Create a Open3D PointCloud with uvf map,
