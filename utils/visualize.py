@@ -34,11 +34,12 @@ def draw_proj_cuboid_image(image,
         color:
         thickness:
 
-    Returns: draw in place
+    Returns: same as image
 
     """
+    is_array = True
     if isinstance(image, Image.Image):
-        pass
+        is_array = False
     elif isinstance(image, np.ndarray):
         image = Image.fromarray(image)
     else:
@@ -60,6 +61,10 @@ def draw_proj_cuboid_image(image,
     draw.line([points[1], points[5]])
     draw.line([points[2], points[6]])
     draw.line([points[3], points[7]])
+    if is_array:
+        return np.asarray(image)
+    else:
+        return image
 
 
 def draw_box2d_image(image,
@@ -74,11 +79,11 @@ def draw_box2d_image(image,
         color:
         thickness:
 
-    Returns: draw in place
-
+    Returns: same as image
     """
+    is_array = True
     if isinstance(image, Image.Image):
-        pass
+        is_array = False
     elif isinstance(image, np.ndarray):
         image = Image.fromarray(image)
     else:
@@ -88,6 +93,10 @@ def draw_box2d_image(image,
     draw.line([(left, top), (right, top),
                (right, bottom), (left, bottom), (left, top)],
               width=thickness, fill=color)
+    if is_array:
+        return np.asarray(image)
+    else:
+        return image
 
 
 def draw_line_image(image,
@@ -102,11 +111,12 @@ def draw_line_image(image,
         color:
         thickness:
 
-    Returns:
+    Returns: same as image
 
     """
+    is_array = True
     if isinstance(image, Image.Image):
-        pass
+        is_array = False
     elif isinstance(image, np.ndarray):
         image = Image.fromarray(image)
     else:
@@ -116,6 +126,10 @@ def draw_line_image(image,
     right, bottom = line[1]
     draw.line([(left, top), (right, bottom)],
               width=thickness, fill=color)
+    if is_array:
+        return np.asarray(image)
+    else:
+        return image
 
 
 def draw_pivots_image(image,
@@ -132,10 +146,11 @@ def draw_pivots_image(image,
                   [Z_h, Z_v] ] , h(horizontal), v(vertical)
         thickness:
 
-    Returns: modify in place
+    Returns: same as image
     """
+    is_array = True
     if isinstance(image, Image.Image):
-        pass
+        is_array = False
     elif isinstance(image, np.ndarray):
         image = Image.fromarray(image)
     else:
@@ -153,6 +168,10 @@ def draw_pivots_image(image,
               width=thickness, fill='green')
     draw.line([(h, v), (z_h, z_v)],
               width=thickness, fill='blue')
+    if is_array:
+        return np.asarray(image)
+    else:
+        return image
 
 
 def draw_big_dots_image(image,
@@ -167,11 +186,11 @@ def draw_big_dots_image(image,
         color:
         thickness: radius equals 2 * thickness
 
-    Returns:
-
+    Returns: same as image
     """
+    is_array = True
     if isinstance(image, Image.Image):
-        pass
+        is_array = False
     elif isinstance(image, np.ndarray):
         image = Image.fromarray(image)
     else:
@@ -180,3 +199,7 @@ def draw_big_dots_image(image,
     r = 2 * thickness
     for (x, y) in dots:
         draw.ellipse((x-r, y-r, x+r, y+r), fill=color)
+    if is_array:
+        return np.asarray(image)
+    else:
+        return image

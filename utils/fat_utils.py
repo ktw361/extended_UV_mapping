@@ -138,6 +138,62 @@ class Side(object):
         """ Equivalent to original self._M_ndc2win_then_flip """
         return self._M_offset
 
+    @property
+    def canonical_cuboids(self):
+        """
+
+        Returns: list of (8, 3)
+
+        """
+        cuboids = []
+        for obj in self.object_settings['exported_objects']:
+            width, height, depth = obj['cuboid_dimensions']
+            cx, cy, cz = 0, 0, 0
+            # NOTE: following use OpenCV's coordinate convention,
+
+            # X axis point to the right
+            right = cx + width / 2.0
+            _left = cx - width / 2.0
+            # Y axis point downward
+            top = cy - height / 2.0
+            bottom = cy + height / 2.0
+            # Z axis point forward
+            front = cz + depth / 2.0
+            rear = cz - depth / 2.0
+
+            # List of 8 vertices of the box
+            pts = np.float32([
+                [_left, top, front],     # Front Top Left
+                [right, top, front],     # Front Top Right
+                [right, bottom, front],  # Front Bottom Right
+                [_left, bottom, front],  # Front Bottom Left
+                [_left, top, rear],      # Rear Top Left
+                [right, top, rear],      # Rear Top Right
+                [right, bottom, rear],   # Rear Bottom Right
+                [_left, bottom, rear],   # Rear Bottom Left
+            ])
+            cuboids.append(pts)
+        return cuboids
+
+    @property
+    def canonical_pivots(self):
+        """
+
+        Returns: list of (4, 3)
+
+        """
+        pivots = []
+        for obj in self.object_settings['exported_objects']:
+            width, height, depth = obj['cuboid_dimensions']
+            pts = np.float32([
+                [0, 0, 0],
+                [width, 0, 0],   # X-axis
+                [0, height, 0],  # Y-axis
+                [0, 0, depth],   # Z-axis
+            ])
+            pivots.append(pts)
+        return pivots
+
     def transform_point_cloud_with_transl_and_quat(self,
                                                    pts,
                                                    quat,
@@ -316,33 +372,8 @@ class Side(object):
         Returns: annotated ndarray (h, w, 3)
 
         """
-        width, height, depth = self.object_settings['exported_objects'][ind]['cuboid_dimensions']
-        pivots = np.float32([
-            [0, 0, 0],       # center
-            [height, 0, 0],  # X-axis
-            [0, width, 0],   # Y-axis
-            [0, 0, depth]
-        ])
-
-        # Get cuboids in 3D
-        cx, cy, cz = 0, 0, 0
-        right = cx + width / 2.0  # X axis point to the right
-        _left = cx - width / 2.0
-        top = cy + height / 2.0  # Y axis point upward
-        bottom = cy + height / 2.0
-        front = cz - depth / 2.0  # Z axis point inward
-        rear = cz + depth / 2.0
-        # List of 8 vertices of the box
-        cuboid = np.float32([
-            [_left, top, front],  # Front Top Left
-            [right, top, front],  # Front Top Right
-            [right, bottom, front],  # Front Bottom Right
-            [_left, bottom, front],  # Front Bottom Left
-            [_left, top, rear],  # Rear Top Left
-            [right, top, rear],  # Rear Top Right
-            [right, bottom, rear],  # Rear Bottom Right
-            [_left, bottom, rear],  # Rear Bottom Left
-        ])
+        pivots = self.canonical_pivots[ind]
+        cuboid = self.canonical_cuboids[ind]
 
         # Get model point cloud
         # The '006_mustart_bottle' is UPPER CASE 16K, others' are 16k?
@@ -352,19 +383,19 @@ class Side(object):
 
         # Visualize
         _img = self.img.copy()
-        store_dict = dict(depth_sorted_ind=None)
-        if show_pivots:
-            pivots_2d = self.transform_point_cloud(pivots, ind, store_dict=store_dict)
-            visualize.draw_pivots_image(_img, pivots_2d)
-        if show_cuboids:
-            cuboid_2d = self.transform_point_cloud(cuboid, ind, store_dict=store_dict)
-            visualize.draw_proj_cuboid_image(_img, cuboid_2d)
         if show_projected_pcd:
+            store_dict = dict(depth_sorted_ind=None)
             pcd_2d = self.transform_point_cloud(model_pcd, ind, store_dict=store_dict)
             pcd_ind = np.floor(pcd_2d).astype(int)
             y_ind = np.clip(pcd_ind[:, 1], 0, self.cap_height-1)
             x_ind = np.clip(pcd_ind[:, 0], 0, self.cap_width-1)
             _img[y_ind, x_ind, :] = color_array
+        if show_cuboids:
+            cuboid_2d = self.transform_point_cloud(cuboid, ind)
+            _img = visualize.draw_proj_cuboid_image(_img, cuboid_2d)
+        if show_pivots:
+            pivots_2d = self.transform_point_cloud(pivots, ind)
+            _img = visualize.draw_pivots_image(_img, pivots_2d)
 
         return _img
 
