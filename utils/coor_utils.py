@@ -143,15 +143,18 @@ def rotation_epfl(alpha, beta, gamma):
 """ Camera """
 
 
-def project_3d_2d(A, Xcam):
+def project_3d_2d(A, x3d):
     """
 
-    :param A: [3, 3]
-    :param Xcam:  [3, n]
-    :return:  [2, n]
+    Args:
+        A: (3, 3)
+        x3d: (3, n)
+
+    Returns: (2, n)
+
     """
-    Ximg_h = A @ Xcam
-    return extract_pixel_homo_xn(Ximg_h)
+    x2d_h = A @ x3d
+    return extract_pixel_homo_xn(x2d_h)
 
 
 def extract_pixel_homo_xn(x2d_h):
@@ -163,4 +166,85 @@ def extract_pixel_homo_nx(x2d_h):
     """ x2d_h: [n, 3] -> [n, 2] """
     return normalize_and_drop_homo_nx(x2d_h.T).T
 
+
+def world_to_camera_pipeline(x3d, M_intrinsic, M_offset=None, Tmw=None):
+    """
+    P_2d = M_offset @ divide_by_z() @ M_intrinsic @ P_3d
+        where P_3d = (x, y, z)
+
+    Args:
+        x3d: (n, 3)
+        M_offset: (3, 3)
+        M_intrinsic: (3, 3) or (3, 4)
+        Tmw: (4, 4)
+
+    Returns:
+
+    """
+    pts_h = to_homo_nx(x3d).T  # pts_h: (4, n)
+    if M_offset is None:
+        M_offset = np.identity(3)
+    if Tmw is None:
+        Tmw = np.identity(4)
+    if M_intrinsic.shape == (3, 3):
+        _M_intrinsic = np.zeros([3, 4])
+        _M_intrinsic[:3, :3] = M_intrinsic
+    elif M_intrinsic.shape == (3, 4):
+        _M_intrinsic = np.zeros([3, 4])
+        _M_intrinsic[:3, :] = M_intrinsic
+    else:
+        raise ValueError(f"Unexpected M_intrinsic shape: {M_intrinsic.shape}")
+
+    M_transformations = _M_intrinsic @ Tmw
+    pts_h = M_transformations @ pts_h
+    pts_h = normalize_homo_xn(pts_h)
+    pts_h = M_offset @ pts_h
+    pts_2d = from_home_xn(pts_h).transpose()  # (3,n) -> (n,2)
+
+    return pts_2d
+
+
+def world_to_camera_pipeline_test():
+    x3d = np.float32([
+        [10, 20, 10],
+        [0, -10, 2],
+        [-30, 0, 3],
+        [-5, -5, 1],
+    ])
+    fx = 4
+    fy = 2
+    M_intrinsic = np.float32([
+        [fx, 0, 0],
+        [0, fy, 0],
+        [0, 0,  1],
+    ])
+    x2d_true = np.float32([
+        [4, 4],
+        [0, -10],
+        [-40, 0],
+        [-20, -10]
+    ])
+    x2d_est = world_to_camera_pipeline(x3d, M_intrinsic)
+    np.testing.assert_almost_equal(x2d_true, x2d_est, verbose=True)
+
+
+def reverse_offset(x2d, M_offset):
+    """
+    A typical pipeline of projecting 3d points to 2d is:
+    P_2d = M_offset @ divide_by_z() @ M_intrinsic @ P_3d
+         = M_offset @ P_2d'
+
+    This function calculate P_2d' given P_2d and M_offset
+
+    Args:
+        x2d: (n, 2), above P_2d
+        M_offset: (3, 3)
+
+    Returns: (n, 2)
+
+    """
+    M_offset_inv = np.linalg.inv(M_offset)
+    x2d_h = to_homo_nx(x2d)
+    x2d_prim_h = x2d_h @ M_offset_inv.T
+    return from_home_nx(x2d_prim_h)
 

@@ -44,8 +44,8 @@ def generate_uv_map(pts,
     u_map = np.clip(u_map * bins, 0, bins-1).astype(int)  # [0,1]->[0,bins]->[0,bins-1]
     v_map = np.clip(v_map * bins, 0, bins-1).astype(int)
     if to_256:
-        u_map = u_map * (256/bins)
-        v_map = v_map * (256/bins)
+        u_map = u_map * (256//bins)
+        v_map = v_map * (256//bins)
 
     return u_map, v_map
 
@@ -141,7 +141,7 @@ def generate_uv_frag_map(pts,
     _, vtx_frag_ids = fragment.fragmentation_fps(pts, num_frags=frag_bins)
     uvf = np.column_stack([u_map, v_map, vtx_frag_ids])
     if to_256:
-        uvf[:, -1] = uvf[:, -1] * (256/(frag_bins-1))
+        uvf[:, -1] = uvf[:, -1] * (256//(frag_bins-1))
 
     return uvf
 
@@ -164,7 +164,7 @@ def create_visualization_uvf_point_cloud(pts,
     """
     u, v = generate_uv_map(pts, method, bins=uv_bins, to_256=True)
     frag_center, vtx_frag_ids = fragment.fragmentation_fps(pts, num_frags=frag_bins)
-    vtx_frag_ids = vtx_frag_ids * (256/(frag_bins-1))
+    vtx_frag_ids = vtx_frag_ids * (256//(frag_bins-1))
     uvf = np.column_stack([u, v, vtx_frag_ids])
     frag_clr = np.ones_like(uvf) * [255, 0, 255]  # Pink
 

@@ -61,7 +61,6 @@ class Side(object):
             cam_params = cam_params[1]
 
         # Set intrinsic_matrix and projection_matrix
-        # In NVDU(OpenGL), only the projection matrix is used.
         self._setup_intrinsic_and_projection(cam_params)
 
     def __repr__(self):
@@ -79,11 +78,11 @@ class Side(object):
         self.fx, self.fy = intrinsics['fx'], intrinsics['fy']
         self.cx, self.cy = intrinsics['cx'], intrinsics['cy']
         s = intrinsics['s']
-        self._intrinsic_matrix = np.float32([
-            [self.fx, s, self.cx],
-            [0, self.fy, self.cy],
-            [0,       0,       1],
-        ])  # (3, 3)
+        # self._intrinsic_matrix = np.float32([
+        #     [self.fx, s, self.cx],
+        #     [0, self.fy, self.cy],
+        #     [0,       0,       1],
+        # ])  # (3, 3)
 
         # Calculate projection_matrix
         zfar = 1.0
@@ -109,7 +108,7 @@ class Side(object):
             [0, self.fy, 0, 0],
             [0, 0, 1, 0],
         ])  # 3x4
-        self._M_ndc2win_then_flip = np.float32([
+        self._M_offset = np.float32([
             [1, 0, self.cap_width/2],
             [0, 1, self.cap_height/2],
             [0, 0, 1],
@@ -117,13 +116,27 @@ class Side(object):
 
     @property
     def intrinsic_matrix(self):
-        """ In NVDU(OpenGL), only the projection matrix is used. """
-        warnings.warn("This property is used in NVDU.")
-        return self._intrinsic_matrix
+        """
+        Is:
+            [fx 0  0]
+            [0  fy 0]
+            [0  0  1]
+
+        Not:
+            [fx 0 cx]
+            [0 fy cy]
+            [0  0  1]
+        """
+        return self._M_intrinsic
 
     @property
     def projection_matrix(self):
         return self._projection_matrix
+
+    @property
+    def offset_matrix(self):
+        """ Equivalent to original self._M_ndc2win_then_flip """
+        return self._M_offset
 
     def transform_point_cloud_with_transl_and_quat(self,
                                                    pts,
@@ -155,7 +168,7 @@ class Side(object):
         rot = R.from_quat(quat).as_matrix()
         Tmw = coor_utils.concat_rot_transl_4x4(rot, transl)  # T_model->world, confront OpenGL's
 
-        pts_h = coor_utils.to_homo_nx(pts).T  # pts_h: (3, n)
+        pts_h = coor_utils.to_homo_nx(pts).T  # pts_h: (4, n)
         M_transformations = self._M_intrinsic @ Tmw
         pts_h = M_transformations @ pts_h
         if isinstance(store_dict, dict) and DEPTH_SORTED_IND in store_dict:
@@ -163,7 +176,7 @@ class Side(object):
             store_dict[DEPTH_SORTED_IND] = sorted_ind
             pts_h = pts_h[:, sorted_ind]
         pts_h = coor_utils.normalize_homo_xn(pts_h)
-        pts_h = self._M_ndc2win_then_flip @ pts_h
+        pts_h = self._M_offset @ pts_h
 
         pts_2d = coor_utils.from_home_xn(pts_h).transpose()  # (3,n) -> (n,2)
 
