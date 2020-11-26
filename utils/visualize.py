@@ -57,10 +57,10 @@ def draw_proj_cuboid_image(image,
     ]
     draw.line(lines, width=thickness, fill=color)
     # # (0, 4), (1, 5), (2, 6), (3, 7)
-    draw.line([points[0], points[4]])
-    draw.line([points[1], points[5]])
-    draw.line([points[2], points[6]])
-    draw.line([points[3], points[7]])
+    draw.line([points[0], points[4]], width=thickness//2, fill=color)
+    draw.line([points[1], points[5]], width=thickness//2, fill=color)
+    draw.line([points[2], points[6]], width=thickness//2, fill=color)
+    draw.line([points[3], points[7]], width=thickness//2, fill=color)
     if is_array:
         return np.asarray(image)
     else:
