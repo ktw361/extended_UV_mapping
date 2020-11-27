@@ -67,8 +67,7 @@ class SurfMapping:
                               img,
                               mask,
                               segid,
-                              map_to_xyz,
-                              verbose=False):
+                              map_to_xyz):
         """
 
         Args:
@@ -80,6 +79,7 @@ class SurfMapping:
 
         Returns: (4, 4) ndarray
         """
+        verbose = self.params.get('verbose', True)
         M_intrinsic = self.M_intrinsic[:3, :3]
         M_offset = self.M_offset
         key_len = len(list(map_to_xyz.keys())[0])  # e.g. len((2,3)) = :1
@@ -116,10 +116,15 @@ class SurfMapping:
 
         Tmw = self.estimate_Tmw_from_map(
             img, mask=self.params['mask'], segid=self.segid,
-            map_to_xyz=self.map_to_xyz, verbose=True)
+            map_to_xyz=self.map_to_xyz)
         return Tmw
 
-    def fast_estimate_Tmw_and_compare(self, img, ind=0):
+    def fast_estimate_Tmw_and_compare(self,
+                                      img,
+                                      ind=0,
+                                      color_gt='blue',
+                                      color_est='red'):
+        verbose = self.params.get('verbose', True)
         side = self.side
         Tmw_est = self.fast_estimate_Tmw(img)
         Tmw_true = side.Tmw_list[0]
@@ -130,11 +135,14 @@ class SurfMapping:
         proj_cuboid_true = side.get_params_from_key('projected_cuboid')[ind]
         _img = np.asarray(side.img).copy()
         _img = visualize.draw_proj_cuboid_image(
-            _img, proj_cuboid_true, color='blue', thickness=12)
+            _img, proj_cuboid_true, color=color_gt, thickness=12)
         _img = visualize.draw_proj_cuboid_image(
-            _img, proj_cuboid_est, color='red', thickness=4)
-        print(Tmw_est - Tmw_true)
-        print(np.linalg.norm(Tmw_est - Tmw_true, ord=1))
+            _img, proj_cuboid_est, color=color_est, thickness=4)
+        if verbose:
+            print("Difference of Tmw_estimated and Tmw_true:\n",
+                  Tmw_est - Tmw_true)
+            print("L2 norm of difference: ",
+                  np.linalg.norm(Tmw_est - Tmw_true, ord=1))
         return _img
 
 
@@ -216,7 +224,7 @@ class UVMapping(SurfMapping):
         if method in CYLINDRICAL:
             v_map = unit[:, 1]
 
-        u_map = np.clip(u_map * bins, 0, bins-1).astype(int)  # [0,1]->[0,bins]->[0,bins-1]
+        u_map = np.clip(u_map * bins, 0, bins-1).astype(int)  # [0,1]->[0,bins]->[0,bins)
         v_map = np.clip(v_map * bins, 0, bins-1).astype(int)
         if to_256:
             u_map = u_map * (256//bins)
@@ -266,7 +274,7 @@ class UVFragMapping(SurfMapping):
         _, vtx_frag_ids = fragment.fragmentation_fps(pts, num_frags=self.frag_bins)
         uvf = np.column_stack([u_map, v_map, vtx_frag_ids])
         if self.to_256:
-            uvf[:, -1] = uvf[:, -1] * (256//(self.frag_bins-1))
+            uvf[:, -1] = uvf[:, -1] * (256//self.frag_bins)
 
         return uvf
 
@@ -418,7 +426,7 @@ def generate_uv_frag_map(pts,
     _, vtx_frag_ids = fragment.fragmentation_fps(pts, num_frags=frag_bins)
     uvf = np.column_stack([u_map, v_map, vtx_frag_ids])
     if to_256:
-        uvf[:, -1] = uvf[:, -1] * (256//(frag_bins-1))
+        uvf[:, -1] = uvf[:, -1] * (256//frag_bins)
 
     return uvf
 
