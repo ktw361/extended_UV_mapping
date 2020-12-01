@@ -12,7 +12,6 @@ import mmcv
 
 
 class Side(object):
-    # TODO: add `mixed` support
     """
     A Side is a set of images of 'depth' 'image' 'seg'
     and object annotations.
